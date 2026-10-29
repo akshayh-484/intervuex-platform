@@ -1,50 +1,37 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Camera, Mic, Monitor, AlertTriangle } from 'lucide-react';
+import { Shield, Camera, Mic, Monitor, AlertCircle, ArrowRight, Loader2, KeyRound, Zap } from 'lucide-react';
 
-/**
- * CANDIDATE LOGIN PAGE
- * Secure entry point for candidates with interview token
- */
 const CandidateLogin = () => {
-  const navigate = useNavigate();
-  const [token, setToken] = useState('');
+  const navigate   = useNavigate();
+  const [token, setToken]     = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]     = useState('');
 
   const handleLogin = async (e) => {
     e.preventDefault();
     setError('');
+    if (!token.trim()) { setError('Please enter your interview access token.'); return; }
     setIsLoading(true);
-
     try {
       const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-      // Verify token and get session
-      const response = await fetch(`${API_BASE}/auth/candidate/login`, {
+      const res = await fetch(`${API_BASE}/auth/candidate/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          token,
+          token: token.trim(),
           deviceFingerprint: {
             userAgent: navigator.userAgent,
-            language: navigator.language,
-            platform: navigator.platform
-          }
-        })
+            language:  navigator.language,
+            platform:  navigator.platform,
+          },
+        }),
       });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Invalid or expired interview link');
-      }
-      
-      // Store auth token — controller returns { token, session: { id, ... } }
-      localStorage.setItem('token', data.token);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Invalid or expired interview link');
+      localStorage.setItem('token',     data.token);
       localStorage.setItem('sessionId', data.session.id);
-
-      // Navigate to terms page with the access token (not session ID)
-      navigate(`/interview-terms/${token}`);
+      navigate(`/interview-terms/${token.trim()}`);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -53,108 +40,107 @@ const CandidateLogin = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-      <div className="max-w-2xl w-full">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex items-center justify-center mb-4">
-            <Shield className="w-16 h-16 text-blue-600" />
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-brand-900 to-slate-900 flex items-center justify-center p-4">
+      {/* Animated background orbs */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-brand-600/20 rounded-full blur-3xl animate-pulse-slow" />
+        <div className="absolute bottom-1/4 right-1/4 w-80 h-80 bg-purple-600/15 rounded-full blur-3xl animate-pulse-slow" style={{ animationDelay: '1s' }} />
+      </div>
+
+      <div className="relative z-10 w-full max-w-4xl grid lg:grid-cols-5 gap-6">
+        {/* Left info card */}
+        <div className="lg:col-span-2 glass-dark rounded-2xl p-6 text-white hidden lg:flex flex-col justify-between animate-slide-in-left">
+          <div>
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 gradient-animate rounded-xl flex items-center justify-center">
+                <Zap className="w-6 h-6 text-white" />
+              </div>
+              <span className="text-xl font-black">INTERVUEX</span>
+            </div>
+            <h2 className="text-2xl font-bold mb-3 leading-snug">Your interview is ready</h2>
+            <p className="text-white/60 text-sm leading-relaxed">
+              Enter the access token from your invitation email to begin your AI-powered interview session.
+            </p>
           </div>
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">INTERVUEX</h1>
-          <p className="text-lg text-gray-600">AI-Powered Virtual Interview Platform</p>
+
+          <div className="space-y-3 mt-8">
+            {[
+              { icon: Camera,  label: 'Camera monitoring active' },
+              { icon: Mic,     label: 'Voice input supported' },
+              { icon: Monitor, label: 'Fullscreen required' },
+              { icon: Shield,  label: 'End-to-end encrypted' },
+            ].map(({ icon: Icon, label }, i) => (
+              <div key={i} className="flex items-center gap-3 text-sm text-white/70">
+                <div className="w-7 h-7 bg-white/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <Icon className="w-3.5 h-3.5 text-white/80" />
+                </div>
+                {label}
+              </div>
+            ))}
+          </div>
         </div>
 
-        {/* Login Card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8 mb-6">
-          <h2 className="text-2xl font-bold text-gray-900 mb-6">Enter Interview</h2>
+        {/* Right form */}
+        <div className="lg:col-span-3 glass rounded-2xl p-8 animate-slide-in-right">
+          {/* Mobile logo */}
+          <div className="lg:hidden flex items-center gap-3 mb-6">
+            <div className="w-9 h-9 gradient-animate rounded-xl flex items-center justify-center">
+              <Zap className="w-5 h-5 text-white" />
+            </div>
+            <span className="text-xl font-black text-gray-900">INTERVUEX</span>
+          </div>
 
-          <form onSubmit={handleLogin} className="space-y-6">
+          <div className="mb-6">
+            <h1 className="text-2xl font-bold text-gray-900">Enter your access token</h1>
+            <p className="text-gray-500 mt-1 text-sm">Check your invitation email for the unique token</p>
+          </div>
+
+          <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Interview Access Token
-              </label>
-              <input
-                type="text"
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Enter your unique interview token"
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                required
-              />
-              <p className="mt-2 text-sm text-gray-500">
-                This token was sent to you via email
-              </p>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Interview Access Token</label>
+              <div className="relative">
+                <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <input
+                  type="text"
+                  value={token}
+                  onChange={e => setToken(e.target.value)}
+                  placeholder="e.g. 3f9a2c1d-8e7b-4a6f-…"
+                  className="input-field pl-10 font-mono text-sm"
+                  required
+                />
+              </div>
             </div>
 
             {error && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-                <div>
-                  <h4 className="font-semibold text-red-800">Error</h4>
-                  <p className="text-sm text-red-700">{error}</p>
-                </div>
+              <div className="flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl text-sm animate-scale-in">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                {error}
               </div>
             )}
 
-            <button
-              type="submit"
-              disabled={isLoading || !token}
-              className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {isLoading ? 'Verifying...' : 'Start Interview'}
+            <button type="submit" disabled={isLoading || !token.trim()} className="btn-primary w-full">
+              {isLoading ? (
+                <><Loader2 className="w-4 h-4 animate-spin" />Verifying token…</>
+              ) : (
+                <>Continue to Interview <ArrowRight className="w-4 h-4" /></>
+              )}
             </button>
           </form>
-        </div>
 
-        {/* System Requirements */}
-        <div className="bg-white rounded-2xl shadow-xl p-6">
-          <h3 className="font-bold text-gray-900 mb-4 flex items-center gap-2">
-            <Monitor className="w-5 h-5 text-blue-600" />
-            System Requirements
-          </h3>
-          
-          <div className="space-y-3">
-            <div className="flex items-start gap-3">
-              <Camera className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">Webcam Access Required</p>
-                <p className="text-sm text-gray-600">Your camera will be monitored throughout the interview</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <Mic className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">Microphone Access Required</p>
-                <p className="text-sm text-gray-600">Audio monitoring for integrity verification</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-3">
-              <Shield className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <p className="font-medium text-gray-900">Proctoring Active</p>
-                <p className="text-sm text-gray-600">AI-powered monitoring detects violations</p>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h4 className="font-semibold text-yellow-900 mb-2">Important Guidelines</h4>
-            <ul className="text-sm text-yellow-800 space-y-1">
-              <li>• Ensure you are alone in a quiet room</li>
-              <li>• Keep your face visible to the camera at all times</li>
-              <li>• Do not switch tabs or minimize the window</li>
-              <li>• Multiple faces or voices will be flagged as violations</li>
-              <li>• All activities are recorded and monitored</li>
+          {/* Requirements */}
+          <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+            <p className="text-sm font-semibold text-amber-800 mb-2">Before you begin</p>
+            <ul className="text-xs text-amber-700 space-y-1">
+              <li>• Use <strong>Google Chrome</strong> or <strong>Microsoft Edge</strong> for best experience</li>
+              <li>• Ensure you're in a <strong>quiet, well-lit room</strong> — alone</li>
+              <li>• Allow <strong>camera and microphone</strong> access when prompted</li>
+              <li>• Do <strong>not</strong> close or refresh the browser during the interview</li>
             </ul>
           </div>
-        </div>
 
-        {/* Footer */}
-        <div className="text-center mt-6 text-sm text-gray-600">
-          <p>© 2024 INTERVUEX. Enterprise Interview Platform.</p>
-          <p className="mt-1">All interviews are monitored and recorded for quality assurance.</p>
+          <p className="text-center text-xs text-gray-400 mt-6">
+            © 2026 INTERVUEX · Enterprise Interview Platform
+          </p>
         </div>
       </div>
     </div>

@@ -13,16 +13,14 @@ const openai = process.env.OPENAI_API_KEY ? new OpenAI({
  * Generate next question based on previous answer
  * Ensures uniqueness and progressive difficulty
  */
-export const generateNextQuestion = async (previousQuestion, candidateAnswer, candidateProfile, previousAnswers = [], questionHistory = []) => {
+export const generateNextQuestion = async (previousQuestion, candidateAnswer, candidateProfile, previousAnswers = [], questionHistory = [], baseDifficulty = 'medium') => {
   try {
-    // If OpenAI is not configured, use fallback
     if (!openai) {
-      return generateFallbackQuestion(previousQuestion, candidateAnswer, previousAnswers);
+      return generateFallbackQuestion(previousQuestion, candidateAnswer, previousAnswers, baseDifficulty);
     }
 
-    // Calculate difficulty progression
     const currentQuestionNumber = previousAnswers.length + 1;
-    const difficultyLevel = getDifficultyLevel(currentQuestionNumber, candidateAnswer);
+    const difficultyLevel = getDifficultyLevel(currentQuestionNumber, candidateAnswer, baseDifficulty);
 
     const prompt = `You are an expert technical interviewer conducting a ${difficultyLevel} difficulty interview.
 
@@ -99,25 +97,27 @@ Return ONLY the question text, nothing else.`;
 
   } catch (error) {
     console.error('Dynamic question generation error:', error);
-    return generateFallbackQuestion(previousQuestion, candidateAnswer, previousAnswers);
+    return generateFallbackQuestion(previousQuestion, candidateAnswer, previousAnswers, baseDifficulty);
   }
 };
 
 /**
- * Determine difficulty level based on question number and answer quality
+ * Determine difficulty level based on question number and answer quality.
+ * Respects the initial session difficulty so hard sessions stay hard.
  */
-const getDifficultyLevel = (questionNumber, answer) => {
-  const answerQuality = analyzeAnswerQuality(answer);
-  
-  // Progressive difficulty based on question number
-  if (questionNumber <= 3) {
-    return answerQuality.quality === 'excellent' ? 'medium' : 'easy';
-  } else if (questionNumber <= 6) {
-    return answerQuality.quality === 'excellent' ? 'hard' : 'medium';
-  } else {
-    // Questions 7-10 are always hard
-    return 'hard';
+const getDifficultyLevel = (questionNumber, answer, baseDifficulty = 'medium') => {
+  const quality = analyzeAnswerQuality(answer).quality;
+
+  if (baseDifficulty === 'easy') {
+    return questionNumber <= 5 ? 'easy' : quality === 'excellent' ? 'medium' : 'easy';
   }
+  if (baseDifficulty === 'hard') {
+    return questionNumber <= 3 ? 'hard' : quality === 'poor' ? 'medium' : 'hard';
+  }
+  // medium (default)
+  if (questionNumber <= 3) return quality === 'excellent' ? 'medium' : 'easy';
+  if (questionNumber <= 7) return quality === 'excellent' ? 'hard'   : 'medium';
+  return 'hard';
 };
 
 /**
@@ -141,10 +141,9 @@ const assessDifficulty = (answer) => {
  * Generate fallback question when AI is not available
  * Ensures uniqueness and progressive difficulty
  */
-const generateFallbackQuestion = (previousQuestion, candidateAnswer, previousAnswers = []) => {
+const generateFallbackQuestion = (previousQuestion, candidateAnswer, previousAnswers = [], baseDifficulty = 'medium') => {
   const questionNumber = previousAnswers.length + 1;
-  
-  // Advanced technical questions pool organized by difficulty
+  const difficulty = getDifficultyLevel(questionNumber, candidateAnswer, baseDifficulty);
   const hardQuestions = [
     "Explain the differences between TCP and UDP protocols. In what scenarios would you choose one over the other, and why?",
     "Design a scalable microservices architecture for an e-commerce platform handling 1 million requests per day. What are the key considerations?",
@@ -204,8 +203,6 @@ const generateFallbackQuestion = (previousQuestion, candidateAnswer, previousAns
   
   // Select random question from available pool
   const randomQuestion = finalPool[Math.floor(Math.random() * finalPool.length)];
-
-  const difficulty = questionNumber <= 3 ? 'easy' : questionNumber <= 6 ? 'medium' : 'hard';
 
   return {
     id: `fallback_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,

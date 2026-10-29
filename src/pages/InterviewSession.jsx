@@ -1,449 +1,339 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ProctoringEngine from '../components/proctoring/ProctoringEngine.jsx';
-import QuestionPanel from '../components/interview/QuestionPanel.jsx';
-import AnswerRecorder from '../components/interview/AnswerRecorder.jsx';
-import Timer from '../components/interview/Timer.jsx';
-import { Clock, AlertCircle } from 'lucide-react';
+import QuestionPanel    from '../components/interview/QuestionPanel.jsx';
+import AnswerRecorder   from '../components/interview/AnswerRecorder.jsx';
+import Timer            from '../components/interview/Timer.jsx';
+import { Clock, AlertCircle, CheckCircle, Loader2, Zap, ChevronRight } from 'lucide-react';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
-/**
- * INTERVIEW SESSION PAGE
- * Main interview interface with integrated proctoring
- * Handles question flow, answer submission, and real-time monitoring
- */
+const authFetch = (url, opts = {}) => fetch(url, {
+  ...opts,
+  headers: {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+    ...(opts.headers || {}),
+  },
+});
+
 const InterviewSession = () => {
-  const { token } = useParams();
-  const navigate = useNavigate();
-  
-  const [session, setSession] = useState(null);
-  const [currentQuestion, setCurrentQuestion] = useState(null);
-  const [questionIndex, setQuestionIndex] = useState(0);
-  const [answers, setAnswers] = useState([]);
+  const { token }  = useParams();
+  const navigate   = useNavigate();
+
+  const [phase, setPhase]         = useState('loading'); // loading | active | submitting | done
+  const [session, setSession]     = useState(null);
+  const [currentQ, setCurrentQ]   = useState(null);
+  const [qIndex, setQIndex]       = useState(0);
+  const [answers, setAnswers]     = useState([]);
   const [integrityScore, setIntegrityScore] = useState(100);
   const [violations, setViolations] = useState([]);
-  const [timeRemaining, setTimeRemaining] = useState(1800); // 30 minutes
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [timeRemaining, setTimeRemaining] = useState(1800);
   const [sessionId, setSessionId] = useState(null);
-  // Refs to avoid stale closures in callbacks
-  const violationsRef = useRef([]);
-  const sessionIdRef = useRef(null);
-  const integrityScoreRef = useRef(100);
+  const [toast, setToast]         = useState(null); // { message, type }
 
+  /* refs to avoid stale closures */
+  const violationsRef    = useRef([]);
+  const sessionIdRef     = useRef(null);
+  const integrityRef     = useRef(100);
+
+  /* show a non-blocking toast */
+  const showToast = (message, type = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  };
+
+  /* ── fullscreen helpers ── */
+  const enterFS = () => {
+    const el = document.documentElement;
+    (el.requestFullscreen || el.webkitRequestFullscreen || el.msRequestFullscreen)?.call(el)
+      .catch(() => {});
+  };
+  const exitFS = () => {
+    (document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen)
+      ?.call(document).catch(() => {});
+  };
+
+  /* ── beforeunload guard ── */
   useEffect(() => {
-    initializeSession();
-    preventNavigation();
-    enterFullscreen();
-    
-    return () => {
-      cleanup();
-      exitFullscreen();
-    };
+    const fn = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', fn);
+    return () => window.removeEventListener('beforeunload', fn);
   }, []);
 
-  /**
-   * Enter fullscreen mode
-   */
-  const enterFullscreen = () => {
-    const elem = document.documentElement;
-    if (elem.requestFullscreen) {
-      elem.requestFullscreen().catch(err => {
-        console.warn('Could not enter fullscreen:', err);
-      });
-    } else if (elem.webkitRequestFullscreen) {
-      elem.webkitRequestFullscreen();
-    } else if (elem.msRequestFullscreen) {
-      elem.msRequestFullscreen();
-    }
-  };
+  /* ── bootstrap ── */
+  useEffect(() => {
+    init();
+    enterFS();
+    return () => exitFS();
+  }, []);
 
-  /**
-   * Exit fullscreen mode
-   */
-  const exitFullscreen = () => {
-    if (document.exitFullscreen) {
-      document.exitFullscreen().catch(err => console.warn('Exit fullscreen error:', err));
-    } else if (document.webkitExitFullscreen) {
-      document.webkitExitFullscreen();
-    } else if (document.msExitFullscreen) {
-      document.msExitFullscreen();
-    }
-  };
-
-  /**
-   * Initialize interview session
-   */
-  const initializeSession = async () => {
+  const init = async () => {
     try {
-      // First, authenticate with the token
-      const authResponse = await fetch(`${API_BASE}/auth/candidate/login`, {
+      /* 1. candidate login */
+      const authRes = await fetch(`${API_BASE}/auth/candidate/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           token,
-          deviceFingerprint: {
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            platform: navigator.platform
-          }
-        })
+          deviceFingerprint: { userAgent: navigator.userAgent, language: navigator.language, platform: navigator.platform },
+        }),
       });
-
-      if (!authResponse.ok) {
-        const error = await authResponse.json();
-        throw new Error(error.error || 'Invalid or expired interview link');
+      if (!authRes.ok) {
+        const e = await authRes.json();
+        throw new Error(e.error || 'Invalid or expired interview link');
       }
-
-      const authData = await authResponse.json();
-      
-      // Store auth token and session info
+      const authData = await authRes.json();
       localStorage.setItem('token', authData.token);
       setSessionId(authData.session.id);
       sessionIdRef.current = authData.session.id;
       setTimeRemaining(authData.session.duration);
 
-      // Start the interview session
-      const startResponse = await fetch(`${API_BASE}/interview/start`, {
+      /* 2. start session */
+      const startRes = await authFetch(`${API_BASE}/interview/start`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${authData.token}`
-        },
         body: JSON.stringify({
           sessionId: authData.session.id,
-          deviceFingerprint: {
-            userAgent: navigator.userAgent,
-            language: navigator.language,
-            platform: navigator.platform
-          }
-        })
+          deviceFingerprint: { userAgent: navigator.userAgent },
+        }),
       });
+      if (!startRes.ok) throw new Error('Failed to start interview session');
+      const startData = await startRes.json();
 
-      if (!startResponse.ok) {
-        throw new Error('Failed to start interview');
-      }
+      const qs = startData.session.questions;
+      if (!qs?.length) throw new Error('No questions found for this interview');
 
-      const startData = await startResponse.json();
       setSession(startData.session);
-      
-      // Set first question
-      if (startData.session.questions && startData.session.questions.length > 0) {
-        setCurrentQuestion(startData.session.questions[0]);
-      } else {
-        throw new Error('No questions available for this interview');
-      }
-
-    } catch (error) {
-      console.error('Failed to initialize session:', error);
-      alert(error.message || 'Invalid or expired interview link');
+      setCurrentQ(qs[0]);
+      setPhase('active');
+    } catch (err) {
+      console.error(err);
+      alert(err.message || 'Failed to start interview');
       navigate('/');
     }
-  }
+  };
 
-  /**
-   * Prevent navigation during interview
-   */
-  const preventNavigation = () => {
-    const handleBeforeUnload = (e) => {
-      e.preventDefault();
-      e.returnValue = 'Are you sure you want to leave? Your interview will be terminated.';
-      return e.returnValue;
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }
-
-  /**
-   * Handle violation from proctoring engine
-   */
-  const handleViolation = (violation) => {
+  /* ── violation handler ── */
+  const handleViolation = (v) => {
     setViolations(prev => {
-      const updated = [...prev, violation];
+      const updated = [...prev, v];
       violationsRef.current = updated;
-      // Auto-terminate if too many violations (use ref length to avoid stale state)
-      if (updated.length >= 10) {
-        terminateInterview('Too many integrity violations');
-      }
+      if (updated.length >= 10) terminateInterview('Too many integrity violations');
       return updated;
     });
-    
-    // Show warning to candidate
-    if (violation.severity === 'HIGH') {
-      showViolationWarning(violation);
+    if (v.severity === 'HIGH' || v.severity === 'CRITICAL') {
+      showToast(`⚠️ ${v.message}`, 'warning');
     }
-  }
+  };
 
-  /**
-   * Show violation warning
-   */
-  const showViolationWarning = (violation) => {
-    // You can implement a toast notification here
-    console.warn('VIOLATION WARNING:', violation.message);
-  }
-
-  /**
-   * Handle integrity score update
-   */
   const handleIntegrityUpdate = (score) => {
     setIntegrityScore(score);
-    integrityScoreRef.current = score;
-  }
+    integrityRef.current = score;
+  };
 
-  /**
-   * Handle answer submission
-   */
+  /* ── answer submit ── */
   const handleAnswerSubmit = async (answer) => {
-    setIsSubmitting(true);
-
+    setPhase('submitting');
     try {
-      // Submit answer to backend
-      const response = await fetch(`${API_BASE}/interview/submit-answer`, {
+      const res = await authFetch(`${API_BASE}/interview/submit-answer`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({
-          sessionId,
-          questionId: currentQuestion.id,
+          sessionId:  sessionIdRef.current,
+          questionId: currentQ.id,
           answer,
-          timestamp: new Date().toISOString()
-        })
+          timestamp:  new Date().toISOString(),
+        }),
       });
+      const data = await res.json();
+      setAnswers(prev => [...prev, { questionId: currentQ.id, answer, timestamp: new Date().toISOString() }]);
 
-      if (!response.ok) {
-        throw new Error('Failed to submit answer');
-      }
-
-      const data = await response.json();
-
-      // Store answer locally
-      setAnswers(prev => [...prev, {
-        questionId: currentQuestion.id,
-        answer,
-        timestamp: new Date().toISOString()
-      }]);
-
-      // Check if there's a next question (dynamically generated or from original list)
       if (data.nextQuestion) {
-        // Add dynamically generated question to session
-        setSession(prev => ({
-          ...prev,
-          questions: [...prev.questions, data.nextQuestion]
-        }));
-        setCurrentQuestion(data.nextQuestion);
-        setQuestionIndex(prev => prev + 1);
-      } else if (questionIndex < session.questions.length - 1) {
-        // Move to next pre-generated question
-        setQuestionIndex(prev => prev + 1);
-        setCurrentQuestion(session.questions[questionIndex + 1]);
+        setSession(prev => ({ ...prev, questions: [...prev.questions, data.nextQuestion] }));
+        setCurrentQ(data.nextQuestion);
+        setQIndex(prev => prev + 1);
+      } else if (qIndex < session.questions.length - 1) {
+        setQIndex(prev => prev + 1);
+        setCurrentQ(session.questions[qIndex + 1]);
       } else {
-        // Interview complete - all questions answered
-        completeInterview();
+        await completeInterview();
+        return;
       }
-
-    } catch (error) {
-      console.error('Failed to submit answer:', error);
-      alert('Failed to submit answer. Please try again.');
+    } catch (err) {
+      showToast('Failed to submit answer. Please try again.', 'error');
     } finally {
-      setIsSubmitting(false);
+      if (phase !== 'done') setPhase('active');
     }
-  }
+  };
 
-  /**
-   * Complete interview
-   */
+  /* ── complete ── */
   const completeInterview = async () => {
+    setPhase('done');
     try {
-      const sid = sessionIdRef.current || sessionId;
-      await fetch(`${API_BASE}/interview/end`, {
+      await authFetch(`${API_BASE}/interview/end`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({
-          sessionId: sid,
-          integrityScore: integrityScoreRef.current,
-          violations: violationsRef.current,
-          completedAt: new Date().toISOString()
-        })
+          sessionId:      sessionIdRef.current,
+          integrityScore: integrityRef.current,
+          violations:     violationsRef.current,
+          completedAt:    new Date().toISOString(),
+        }),
       });
+    } catch { /* best-effort */ }
+    navigate('/interview-complete');
+  };
 
-      alert('Interview completed successfully! Thank you.');
-      navigate('/interview-complete');
-    } catch (error) {
-      console.error('Failed to complete interview:', error);
-      alert('Interview completed but there was an error saving. Please contact support.');
-      navigate('/interview-complete');
-    }
-  }
-
-  /**
-   * Terminate interview due to violations
-   */
+  /* ── terminate ── */
   const terminateInterview = async (reason) => {
+    if (phase === 'done') return;
+    setPhase('done');
     try {
-      const sid = sessionIdRef.current || sessionId;
-      await fetch(`${API_BASE}/interview/terminate`, {
+      await authFetch(`${API_BASE}/interview/terminate`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        },
         body: JSON.stringify({
-          sessionId: sid,
+          sessionId:      sessionIdRef.current,
           reason,
-          integrityScore: integrityScoreRef.current,
-          violations: violationsRef.current
-        })
+          integrityScore: integrityRef.current,
+          violations:     violationsRef.current,
+        }),
       });
+    } catch { /* best-effort */ }
+    navigate('/interview-complete');
+  };
 
-      alert(`Interview terminated: ${reason}`);
-      navigate('/');
-    } catch (error) {
-      console.error('Failed to terminate interview:', error);
-    }
-  }
+  const handleTimerExpiry = () => completeInterview();
 
-  /**
-   * Handle timer expiry
-   */
-  const handleTimerExpiry = () => {
-    alert('Time is up! Submitting your interview...');
-    completeInterview();
-  }
+  /* ── integrity color ── */
+  const integrityColor =
+    integrityScore >= 80 ? 'text-emerald-400' :
+    integrityScore >= 60 ? 'text-amber-400' : 'text-red-400';
 
-  /**
-   * Cleanup on unmount
-   */
-  const cleanup = () => {
-    // Cleanup handled by proctoring engine
-  }
-
-  if (!session || !currentQuestion) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Loading interview session...</p>
+  /* ── loading screen ── */
+  if (phase === 'loading') return (
+    <div className="min-h-screen bg-slate-900 flex items-center justify-center">
+      <div className="text-center">
+        <div className="w-20 h-20 gradient-animate rounded-2xl flex items-center justify-center mx-auto mb-6 animate-float">
+          <Zap className="w-10 h-10 text-white" />
+        </div>
+        <p className="text-white font-semibold text-lg mb-2">Initialising your interview…</p>
+        <p className="text-white/50 text-sm">Loading questions and proctoring system</p>
+        <div className="flex justify-center gap-1 mt-6">
+          {[0,1,2].map(i => (
+            <div key={i} className="w-2 h-2 bg-brand-400 rounded-full animate-bounce" style={{ animationDelay: `${i*0.2}s` }} />
+          ))}
         </div>
       </div>
-    );
-  }
+    </div>
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Proctoring Engine - Always Active */}
+    <div className="min-h-screen bg-gray-50 no-select">
+      {/* Proctoring engine (always active, positioned top-right) */}
       <ProctoringEngine
         sessionId={sessionId}
         onViolation={handleViolation}
         onIntegrityUpdate={handleIntegrityUpdate}
       />
 
-      {/* Top Bar */}
-      <div className="bg-white border-b shadow-sm">
-        <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-800">INTERVUEX Interview</h1>
-              <p className="text-sm text-gray-600">Session ID: {sessionId}</p>
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-4 right-4 z-[60] px-4 py-3 rounded-xl shadow-lg text-sm font-medium flex items-center gap-2 animate-fade-down ${
+          toast.type === 'warning' ? 'bg-amber-600 text-white' :
+          toast.type === 'error'   ? 'bg-red-600 text-white' :
+          'bg-brand-600 text-white'
+        }`}>
+          <AlertCircle className="w-4 h-4" />
+          {toast.message}
+        </div>
+      )}
+
+      {/* ── Top bar ── */}
+      <header className="bg-slate-900 border-b border-slate-800 sticky top-0 z-30">
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 gradient-animate rounded-lg flex items-center justify-center flex-shrink-0">
+              <Zap className="w-4 h-4 text-white" />
             </div>
-
-            <div className="flex items-center gap-6">
-              {/* Timer */}
-              <div className="flex items-center gap-2 bg-blue-50 px-4 py-2 rounded-lg">
-                <Clock className="w-5 h-5 text-blue-600" />
-                <Timer
-                  duration={timeRemaining}
-                  onExpiry={handleTimerExpiry}
-                />
-              </div>
-
-              {/* Integrity Score */}
-              <div className="flex items-center gap-2 bg-purple-50 px-4 py-2 rounded-lg">
-                <AlertCircle className="w-5 h-5 text-purple-600" />
-                <div>
-                  <div className="text-xs text-gray-600">Integrity</div>
-                  <div className={`text-lg font-bold ${
-                    integrityScore >= 80 ? 'text-green-600' :
-                    integrityScore >= 60 ? 'text-yellow-600' :
-                    'text-red-600'
-                  }`}>
-                    {integrityScore}%
-                  </div>
-                </div>
-              </div>
-
-              {/* End Interview Button */}
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to end the interview? This action cannot be undone.')) {
-                    completeInterview();
-                  }
-                }}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center gap-2"
-              >
-                <AlertCircle className="w-4 h-4" />
-                End Interview
-              </button>
+            <div className="hidden sm:block">
+              <span className="text-white font-bold text-sm">INTERVUEX</span>
+              <span className="text-slate-400 text-xs ml-2 font-mono">{sessionId?.slice(0,8)}…</span>
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Main Interview Area */}
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-4xl mx-auto">
-          {/* Progress Bar */}
-          <div className="mb-6">
-            <div className="flex justify-between text-sm text-gray-600 mb-2">
-              <span>Question {questionIndex + 1} of {session.questions.length}</span>
-              <span>{Math.round(((questionIndex + 1) / session.questions.length) * 100)}% Complete</span>
+          <div className="flex items-center gap-3">
+            {/* Timer */}
+            <div className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-1.5">
+              <Clock className="w-4 h-4 text-slate-400" />
+              <Timer duration={timeRemaining} onExpiry={handleTimerExpiry} />
             </div>
-            <div className="w-full bg-gray-200 rounded-full h-2">
+
+            {/* Integrity score */}
+            <div className="flex items-center gap-2 bg-slate-800 rounded-lg px-3 py-1.5">
+              <span className="text-xs text-slate-400 hidden sm:inline">Integrity</span>
+              <span className={`font-bold text-sm ${integrityColor}`}>{integrityScore}%</span>
+            </div>
+
+            {/* End interview */}
+            <button
+              onClick={() => {
+                if (confirm('End the interview now? You cannot resume.')) completeInterview();
+              }}
+              className="btn-danger py-1.5 px-3 text-xs"
+            >
+              <CheckCircle className="w-3.5 h-3.5" /> Submit
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ── Main content ── */}
+      <main className="max-w-3xl mx-auto px-4 py-8">
+        {/* Progress bar */}
+        {session && (
+          <div className="mb-6 animate-fade-down">
+            <div className="flex justify-between text-xs text-gray-500 mb-2">
+              <span className="font-medium">Question {qIndex + 1} of {session.questions.length}</span>
+              <span>{Math.round(((qIndex + 1) / session.questions.length) * 100)}% complete</span>
+            </div>
+            <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
               <div
-                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                style={{ width: `${((questionIndex + 1) / session.questions.length) * 100}%` }}
+                className="h-full bg-gradient-to-r from-brand-500 to-brand-400 rounded-full transition-all duration-700 ease-out"
+                style={{ width: `${((qIndex + 1) / session.questions.length) * 100}%` }}
               />
             </div>
           </div>
+        )}
 
-          {/* Question Panel */}
-          <QuestionPanel
-            question={currentQuestion}
-            questionNumber={questionIndex + 1}
-          />
+        {/* Question */}
+        {currentQ && (
+          <div key={currentQ.id} className="animate-fade-up">
+            <QuestionPanel question={currentQ} questionNumber={qIndex + 1} />
+          </div>
+        )}
 
-          {/* Answer Recorder */}
+        {/* Answer */}
+        <div className="animate-fade-up" style={{ animationDelay: '0.1s' }}>
           <AnswerRecorder
-            questionType={currentQuestion.type}
+            key={currentQ?.id}
+            questionType={currentQ?.type}
             onSubmit={handleAnswerSubmit}
-            isSubmitting={isSubmitting}
+            isSubmitting={phase === 'submitting'}
           />
-
-          {/* Warning Message */}
-          {integrityScore < 70 && (
-            <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="font-semibold text-red-800">Integrity Warning</h4>
-                <p className="text-sm text-red-700">
-                  Your integrity score is low due to detected violations. Please ensure you are alone,
-                  facing the camera, and not using any unauthorized resources.
-                </p>
-              </div>
-            </div>
-          )}
         </div>
-      </div>
+
+        {/* Integrity warning */}
+        {integrityScore < 70 && (
+          <div className="mt-4 flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 animate-scale-in">
+            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-red-800 text-sm">Integrity Warning</p>
+              <p className="text-xs text-red-600 mt-0.5">
+                Multiple violations detected. Ensure you are alone, facing the camera, and not using any external resources.
+                Continued violations may terminate your interview.
+              </p>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 };

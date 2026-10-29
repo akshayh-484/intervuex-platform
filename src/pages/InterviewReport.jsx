@@ -1,194 +1,302 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { recruiterAPI } from '../services/api.js';
-import { ArrowLeft, User, Clock, CheckCircle, AlertTriangle, FileText } from 'lucide-react';
+import {
+  ArrowLeft, User, Clock, CheckCircle, AlertTriangle,
+  FileText, BarChart2, Shield, Star, Loader2,
+  MessageSquare, ChevronDown, ChevronUp, Award
+} from 'lucide-react';
 
+/* ── score ring ── */
+const ScoreRing = ({ score = 0, size = 88, stroke = 8, color = '#6366f1' }) => {
+  const r = (size - stroke) / 2;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  return (
+    <svg width={size} height={size} className="-rotate-90">
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
+      <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+        strokeLinecap="round" strokeDasharray={circ}
+        strokeDashoffset={offset} className="score-ring" />
+    </svg>
+  );
+};
+
+/* ── score card ── */
+const ScoreCard = ({ label, value = 0, color, ringColor }) => (
+  <div className="card p-4 flex flex-col items-center gap-2 animate-fade-up">
+    <div className="relative">
+      <ScoreRing score={value} color={ringColor} />
+      <span className="absolute inset-0 flex items-center justify-center text-xl font-bold text-gray-900 rotate-90" style={{transform:'rotate(90deg)'}}>
+        {value}
+      </span>
+    </div>
+    <p className="text-xs font-semibold text-gray-500 text-center">{label}</p>
+  </div>
+);
+
+/* ── collapsible Q&A item ── */
+const QAItem = ({ question, answer, index }) => {
+  const [open, setOpen] = useState(index === 0);
+  const diff = question.difficulty;
+  const diffCls = diff === 'easy' ? 'badge-easy' : diff === 'medium' ? 'badge-medium' : diff === 'hard' ? 'badge-hard' : '';
+
+  return (
+    <div className="border border-gray-100 rounded-xl overflow-hidden">
+      <button
+        onClick={() => setOpen(!open)}
+        className="w-full px-5 py-4 flex items-center justify-between gap-4 hover:bg-gray-50 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3 flex-1 min-w-0">
+          <span className="w-7 h-7 rounded-full bg-brand-100 text-brand-700 text-xs font-bold flex items-center justify-center flex-shrink-0">
+            {index + 1}
+          </span>
+          {diff && <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${diffCls}`}>{diff}</span>}
+          <p className="text-sm font-semibold text-gray-900 truncate">{question.question}</p>
+        </div>
+        {open ? <ChevronUp className="w-4 h-4 text-gray-400 flex-shrink-0" /> : <ChevronDown className="w-4 h-4 text-gray-400 flex-shrink-0" />}
+      </button>
+      {open && (
+        <div className="px-5 pb-5 bg-gray-50/50 border-t border-gray-100 animate-fade-down">
+          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mt-4 mb-2">Candidate's Answer</p>
+          <p className="text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+            {answer?.answer || <span className="italic text-gray-400">No answer provided</span>}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+};
+
+/* ════════════════════════════════════════════════ */
 const InterviewReport = () => {
   const { sessionId } = useParams();
-  const navigate = useNavigate();
-  const [report, setReport] = useState(null);
+  const navigate      = useNavigate();
+  const [report,  setReport]  = useState(null);
   const [loading, setLoading] = useState(true);
+  const [updating, setUpdating] = useState(false);
+  const [notes, setNotes] = useState('');
+  const [notesSaved, setNotesSaved] = useState(false);
 
-  useEffect(() => {
-    loadReport();
-  }, [sessionId]);
+  useEffect(() => { loadReport(); }, [sessionId]);
 
   const loadReport = async () => {
     try {
-      const response = await recruiterAPI.getInterviewReport(sessionId);
-      setReport(response.data);
-    } catch (error) {
-      console.error('Load report error:', error);
-      alert('Failed to load report');
-    } finally {
-      setLoading(false);
-    }
+      const res = await recruiterAPI.getInterviewReport(sessionId);
+      setReport(res.data);
+      setNotes(res.data.scores?.recruiter_notes || '');
+    } catch { alert('Failed to load report'); }
+    finally  { setLoading(false); }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl">Loading report...</div>
-      </div>
-    );
-  }
+  const updateStatus = async (status) => {
+    setUpdating(true);
+    try {
+      await recruiterAPI.updateShortlistStatus(sessionId, status, notes);
+      await loadReport();
+      setNotesSaved(false);
+    } catch { alert('Failed to update status'); }
+    finally { setUpdating(false); }
+  };
 
-  if (!report) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <div className="text-xl text-red-600">Report not found</div>
-      </div>
-    );
-  }
+  const saveNotes = async () => {
+    if (!report?.scores) return;
+    setUpdating(true);
+    try {
+      await recruiterAPI.updateShortlistStatus(sessionId, report.scores.shortlist_status, notes);
+      setNotesSaved(true);
+      setTimeout(() => setNotesSaved(false), 3000);
+    } catch { alert('Failed to save notes'); }
+    finally { setUpdating(false); }
+  };
+
+  if (loading) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+    </div>
+  );
+
+  if (!report) return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <p className="text-red-500 font-semibold">Report not found</p>
+    </div>
+  );
 
   const { session, scores, violations, questions, answers } = report;
+  const allQ = Array.isArray(questions) ? questions : (typeof questions === 'string' ? JSON.parse(questions) : []);
+  const allA = Array.isArray(answers)   ? answers   : (typeof answers   === 'string' ? JSON.parse(answers)   : []);
+
+  const statusMap = {
+    SHORTLISTED: { cls: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: '✅' },
+    REVIEW:      { cls: 'bg-amber-100   text-amber-800   border-amber-200',   icon: '🔍' },
+    REJECTED:    { cls: 'bg-red-100     text-red-800     border-red-200',     icon: '❌' },
+  };
+  const curStatus = statusMap[scores?.shortlist_status];
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <button
-            onClick={() => navigate('/recruiter/dashboard')}
-            className="flex items-center gap-2 text-blue-600 hover:text-blue-700 mb-4"
-          >
-            <ArrowLeft className="w-5 h-5" />
-            Back to Dashboard
+      {/* nav */}
+      <nav className="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-sm">
+        <div className="max-w-6xl mx-auto px-4 h-14 flex items-center gap-4">
+          <button onClick={() => navigate('/recruiter/dashboard')}
+            className="flex items-center gap-2 text-gray-500 hover:text-brand-600 transition-colors text-sm font-medium">
+            <ArrowLeft className="w-4 h-4" /> Dashboard
           </button>
-          <h1 className="text-2xl font-bold text-gray-800">Interview Report</h1>
+          <span className="text-gray-300">|</span>
+          <span className="text-sm font-semibold text-gray-700">Interview Report</span>
         </div>
-      </div>
+      </nav>
 
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Candidate Info */}
-        <div className="bg-white rounded-lg shadow p-6 mb-6">
-          <div className="flex items-center gap-4 mb-4">
-            <User className="w-12 h-12 text-blue-600" />
-            <div>
-              <h2 className="text-2xl font-bold">{session.full_name}</h2>
-              <p className="text-gray-600">{session.email}</p>
+      <main className="max-w-6xl mx-auto px-4 py-8 space-y-6">
+
+        {/* ── Candidate header ── */}
+        <div className="card p-6 flex flex-col sm:flex-row sm:items-center gap-5 animate-fade-up">
+          <div className="w-14 h-14 rounded-full bg-gradient-to-br from-brand-500 to-brand-700 flex items-center justify-center text-white text-2xl font-bold flex-shrink-0">
+            {session.full_name?.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex-1">
+            <h1 className="text-2xl font-bold text-gray-900">{session.full_name}</h1>
+            <p className="text-gray-400 text-sm">{session.email}</p>
+            <div className="flex flex-wrap items-center gap-3 mt-2 text-sm text-gray-500">
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5" />
+                {session.end_time ? new Date(session.end_time).toLocaleString() : 'In progress'}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                {Math.floor(session.duration_seconds / 60)} min session
+              </span>
+              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
+                session.status === 'completed' ? 'status-completed' : 'status-terminated'}`}>
+                {session.status?.toUpperCase()}
+              </span>
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4 mt-4">
-            <div>
-              <p className="text-sm text-gray-600">Status</p>
-              <p className="font-semibold text-green-600">{session.status}</p>
+          {scores && (
+            <div className="text-center">
+              <div className="relative inline-flex">
+                <ScoreRing score={scores.final_score || 0} size={96} stroke={8}
+                  color={scores.final_score >= 70 ? '#22c55e' : scores.final_score >= 50 ? '#f59e0b' : '#ef4444'} />
+                <span className="absolute inset-0 flex items-center justify-center text-2xl font-black text-gray-900" style={{transform:'rotate(90deg)'}}>
+                  {scores.final_score || 0}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-1 font-medium">Final Score</p>
             </div>
-            <div>
-              <p className="text-sm text-gray-600">Duration</p>
-              <p className="font-semibold">{Math.floor(session.duration_seconds / 60)} minutes</p>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600">Completed At</p>
-              <p className="font-semibold">{new Date(session.end_time).toLocaleString()}</p>
-            </div>
-          </div>
+          )}
         </div>
 
-        {/* Scores */}
+        {/* ── Score breakdown ── */}
         {scores && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h3 className="text-xl font-bold mb-4">Evaluation Scores</h3>
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-              <div className="text-center p-4 bg-blue-50 rounded-lg">
-                <p className="text-sm text-gray-600">Technical</p>
-                <p className="text-3xl font-bold text-blue-600">{scores.technical_score}</p>
-              </div>
-              <div className="text-center p-4 bg-purple-50 rounded-lg">
-                <p className="text-sm text-gray-600">Problem Solving</p>
-                <p className="text-3xl font-bold text-purple-600">{scores.problem_solving_score}</p>
-              </div>
-              <div className="text-center p-4 bg-green-50 rounded-lg">
-                <p className="text-sm text-gray-600">Communication</p>
-                <p className="text-3xl font-bold text-green-600">{scores.communication_score}</p>
-              </div>
-              <div className="text-center p-4 bg-orange-50 rounded-lg">
-                <p className="text-sm text-gray-600">Resume Auth</p>
-                <p className="text-3xl font-bold text-orange-600">{scores.resume_authenticity_score}</p>
-              </div>
-              <div className="text-center p-4 bg-red-50 rounded-lg">
-                <p className="text-sm text-gray-600">Integrity Risk</p>
-                <p className="text-3xl font-bold text-red-600">{scores.integrity_risk_score}</p>
-              </div>
+          <section className="animate-fade-up" style={{ animationDelay: '0.05s' }}>
+            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <BarChart2 className="w-5 h-5 text-brand-500" /> Score Breakdown
+            </h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <ScoreCard label="Technical"       value={scores.technical_score}           ringColor="#6366f1" />
+              <ScoreCard label="Problem Solving" value={scores.problem_solving_score}     ringColor="#8b5cf6" />
+              <ScoreCard label="Communication"   value={scores.communication_score}       ringColor="#22c55e" />
+              <ScoreCard label="Confidence"      value={scores.confidence_score}          ringColor="#f59e0b" />
+              <ScoreCard label="Resume Auth."    value={scores.resume_authenticity_score} ringColor="#0ea5e9" />
+              <ScoreCard label="Integrity Risk"  value={scores.integrity_risk_score}      ringColor="#ef4444" />
             </div>
-            <div className="mt-6 p-6 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg text-white text-center">
-              <p className="text-sm mb-2">Final Score</p>
-              <p className="text-5xl font-bold">{scores.final_score}</p>
-              <p className="mt-4 text-lg font-semibold">
-                Status: {scores.shortlist_status}
-              </p>
-            </div>
-          </div>
+            {/* formula note */}
+            <p className="text-xs text-gray-400 mt-3 text-right">
+              Final = (Tech×0.45) + (PS×0.25) + (Comm×0.15) + (Auth×0.15) − (Risk×0.30)
+            </p>
+          </section>
         )}
 
-        {/* Violations */}
-        {violations && violations.length > 0 && (
-          <div className="bg-white rounded-lg shadow p-6 mb-6">
-            <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-              <AlertTriangle className="w-6 h-6 text-red-600" />
-              Violations ({violations.length})
-            </h3>
-            <div className="space-y-3">
-              {violations.map((violation, index) => (
-                <div key={index} className="p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-semibold text-red-800">{violation.type}</p>
-                      <p className="text-sm text-red-600">
-                        {typeof violation.details === 'object'
-                          ? violation.details?.message || JSON.stringify(violation.details)
-                          : violation.details}
-                      </p>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
-                      violation.severity === 'HIGH' ? 'bg-red-200 text-red-800' :
-                      violation.severity === 'MEDIUM' ? 'bg-yellow-200 text-yellow-800' :
-                      'bg-gray-200 text-gray-800'
-                    }`}>
-                      {violation.severity}
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {new Date(violation.timestamp).toLocaleString()}
-                  </p>
-                </div>
+        {/* ── Decision panel ── */}
+        {scores && (
+          <section className="card p-6 animate-fade-up" style={{ animationDelay: '0.1s' }}>
+            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Award className="w-5 h-5 text-brand-500" /> Hiring Decision
+            </h2>
+            <div className="flex flex-wrap gap-3 mb-5">
+              {['SHORTLISTED','REVIEW','REJECTED'].map(s => (
+                <button key={s} disabled={updating} onClick={() => updateStatus(s)}
+                  className={`px-5 py-2.5 rounded-xl text-sm font-bold border-2 transition-all ${
+                    scores.shortlist_status === s
+                      ? statusMap[s].cls + ' border-current ring-2 ring-offset-1'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                  }`}>
+                  {statusMap[s].icon} {s}
+                </button>
               ))}
             </div>
-          </div>
+            <div>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Recruiter Notes</label>
+              <textarea
+                value={notes} onChange={e => setNotes(e.target.value)} rows={3}
+                className="input-field text-sm resize-none"
+                placeholder="Add your observations about this candidate…"
+              />
+              <div className="flex items-center justify-between mt-2">
+                {notesSaved && <span className="text-xs text-emerald-600 font-medium">✓ Notes saved</span>}
+                <button onClick={saveNotes} disabled={updating} className="btn-primary ml-auto py-1.5 px-4 text-sm">
+                  {updating ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />Saving…</> : 'Save Notes'}
+                </button>
+              </div>
+            </div>
+          </section>
         )}
 
-        {/* Questions & Answers */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-xl font-bold mb-4 flex items-center gap-2">
-            <FileText className="w-6 h-6 text-blue-600" />
-            Questions & Answers
-          </h3>
-          <div className="space-y-6">
-            {questions && questions.map((question, index) => (
-              <div key={index} className="border-b pb-6 last:border-b-0">
-                <div className="flex items-start gap-3 mb-3">
-                  <span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-full">
-                    Q{index + 1}
-                  </span>
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900">{question.question}</p>
-                    <p className="text-sm text-gray-500 mt-1">Type: {question.type}</p>
+        {/* ── Violations ── */}
+        {violations?.length > 0 && (
+          <section className="card p-6 animate-fade-up" style={{ animationDelay: '0.15s' }}>
+            <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+              <Shield className="w-5 h-5 text-red-500" /> Integrity Violations ({violations.length})
+            </h2>
+            {/* severity summary */}
+            <div className="grid grid-cols-4 gap-3 mb-5">
+              {['CRITICAL','HIGH','MEDIUM','LOW'].map(sev => {
+                const cnt = violations.filter(v => v.severity === sev).length;
+                const cls = sev==='CRITICAL'?'bg-red-100 text-red-700':sev==='HIGH'?'bg-orange-100 text-orange-700':sev==='MEDIUM'?'bg-amber-100 text-amber-700':'bg-gray-100 text-gray-600';
+                return (
+                  <div key={sev} className={`rounded-xl p-3 text-center ${cls}`}>
+                    <p className="text-2xl font-black">{cnt}</p>
+                    <p className="text-xs font-semibold">{sev}</p>
                   </div>
-                </div>
-                <div className="ml-12 p-4 bg-gray-50 rounded-lg">
-                  <p className="text-sm font-semibold text-gray-700 mb-2">Answer:</p>
-                  <p className="text-gray-800">
-                    {answers && (
-                      answers.find(a => a.questionId === question.id)?.answer ||
-                      (answers[index] ? answers[index].answer : 'No answer provided')
-                    )}
-                  </p>
-                </div>
-              </div>
-            ))}
+                );
+              })}
+            </div>
+            <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
+              {violations.map((v, i) => {
+                const msg = typeof v.details === 'object'
+                  ? v.details?.message || JSON.stringify(v.details)
+                  : v.details;
+                const sevCls = v.severity==='CRITICAL'?'text-red-700 bg-red-50 border-red-200':v.severity==='HIGH'?'text-orange-700 bg-orange-50 border-orange-200':v.severity==='MEDIUM'?'text-amber-700 bg-amber-50 border-amber-200':'text-gray-600 bg-gray-50 border-gray-200';
+                return (
+                  <div key={i} className={`flex items-start justify-between gap-4 px-4 py-2.5 rounded-xl border ${sevCls} text-sm`}>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-bold">{v.type?.replace(/_/g,' ')}</span>
+                      {msg && <span className="text-xs ml-2 opacity-75">— {msg}</span>}
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      <span className="text-xs font-bold px-1.5 py-0.5 rounded bg-white/50">{v.severity}</span>
+                      <span className="text-xs opacity-60">{new Date(v.timestamp).toLocaleTimeString()}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )}
+
+        {/* ── Q & A ── */}
+        <section className="animate-fade-up" style={{ animationDelay: '0.2s' }}>
+          <h2 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <MessageSquare className="w-5 h-5 text-brand-500" /> Questions &amp; Answers ({allQ.length})
+          </h2>
+          <div className="space-y-2">
+            {allQ.map((q, i) => {
+              const matchedAnswer = allA.find(a => a.questionId === q.id) || allA[i];
+              return <QAItem key={q.id || i} question={q} answer={matchedAnswer} index={i} />;
+            })}
           </div>
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 };

@@ -114,8 +114,8 @@ export const recruiterAPI = {
   getCandidateDetails: (candidateId) =>
     api.get(`/recruiter/candidates/${candidateId}`),
   
-  scheduleInterview: (candidateId, duration, expiresIn, validFrom, validUntil) =>
-    api.post('/recruiter/schedule', { candidateId, duration, expiresIn, validFrom, validUntil }),
+  scheduleInterview: (candidateId, duration, expiresIn, validFrom, validUntil, difficulty = 'medium') =>
+    api.post('/recruiter/schedule', { candidateId, duration, expiresIn, validFrom, validUntil, difficulty }),
   
   getInterviewReport: (sessionId) =>
     api.get(`/recruiter/report/${sessionId}`),

@@ -333,7 +333,7 @@ export const deleteInterview = async (req, res) => {
 };
 export const scheduleInterview = async (req, res) => {
   try {
-    const { candidateId, duration, expiresIn, validFrom, validUntil } = req.body;
+    const { candidateId, duration, expiresIn, validFrom, validUntil, difficulty = 'medium' } = req.body;
     const recruiterId = req.user.id;
 
     // Get candidate data - verify recruiter owns this candidate
@@ -356,10 +356,11 @@ export const scheduleInterview = async (req, res) => {
 
     const recruiter = recruiterResult.rows[0];
 
-    // Generate questions based on resume
+    // Generate questions based on resume and selected difficulty
     const questions = await generateQuestions(
       candidate.resume_parsed_data,
-      candidate.skills
+      candidate.skills,
+      difficulty
     );
 
     // Generate access token
