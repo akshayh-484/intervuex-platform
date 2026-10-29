@@ -11,6 +11,7 @@ import rateLimit from 'express-rate-limit';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import dotenv from 'dotenv';
+import path from 'path';
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -69,6 +70,12 @@ app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
+// Serve uploaded files
+import { fileURLToPath } from 'url';
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
 // Logging middleware
 app.use(logger);
 
@@ -105,19 +112,6 @@ const startServer = async () => {
   try {
     await connectDatabase();
     console.log('✅ Database connected successfully');
-
-    // Run migrations automatically on startup (production)
-    if (process.env.NODE_ENV === 'production') {
-      console.log('� Running database migrations...');
-      try {
-        const { runMigrations } = await import('./migrations/run.js');
-        await runMigrations();
-        console.log('✅ Migrations completed successfully');
-      } catch (migrationError) {
-        console.error('⚠️ Migration error (continuing anyway):', migrationError.message);
-        // Don't exit - tables might already exist
-      }
-    }
 
     httpServer.listen(PORT, () => {
       console.log(`🚀 INTERVUEX Server running on port ${PORT}`);

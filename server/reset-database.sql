@@ -94,3 +94,4 @@ CREATE INDEX idx_violations_session ON violations(session_id);
 
 -- Success message
 SELECT 'Database reset successfully! All tables recreated.' AS message;
+ 

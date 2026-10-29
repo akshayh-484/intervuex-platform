@@ -147,11 +147,12 @@ export const getCandidates = async (req, res) => {
 export const getCandidateDetails = async (req, res) => {
   try {
     const { candidateId } = req.params;
+    const recruiterId = req.user.id;
 
-    // Get candidate info
+    // Get candidate info - verify recruiter owns this candidate
     const candidate = await query(
-      'SELECT * FROM candidates WHERE id = $1',
-      [candidateId]
+      'SELECT * FROM candidates WHERE id = $1 AND created_by = $2',
+      [candidateId, recruiterId]
     );
 
     if (candidate.rows.length === 0) {
@@ -184,14 +185,15 @@ export const getCandidateDetails = async (req, res) => {
 export const getInterviewReport = async (req, res) => {
   try {
     const { sessionId } = req.params;
+    const recruiterId = req.user.id;
 
-    // Get session details
+    // Get session details - filter by recruiter_id to prevent unauthorized access
     const session = await query(
       `SELECT s.*, c.full_name, c.email, c.resume_parsed_data
        FROM interview_sessions s
        JOIN candidates c ON s.candidate_id = c.id
-       WHERE s.id = $1`,
-      [sessionId]
+       WHERE s.id = $1 AND s.recruiter_id = $2`,
+      [sessionId, recruiterId]
     );
 
     if (session.rows.length === 0) {
@@ -334,10 +336,10 @@ export const scheduleInterview = async (req, res) => {
     const { candidateId, duration, expiresIn, validFrom, validUntil } = req.body;
     const recruiterId = req.user.id;
 
-    // Get candidate data
+    // Get candidate data - verify recruiter owns this candidate
     const candidateResult = await query(
-      'SELECT * FROM candidates WHERE id = $1',
-      [candidateId]
+      'SELECT * FROM candidates WHERE id = $1 AND created_by = $2',
+      [candidateId, recruiterId]
     );
 
     if (candidateResult.rows.length === 0) {

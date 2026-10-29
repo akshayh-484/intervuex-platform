@@ -231,6 +231,16 @@ export const getTimeRemaining = async (req, res) => {
 export const endInterview = async (req, res) => {
   try {
     const { sessionId, reason } = req.body;
+    const candidateId = req.user.id;
+
+    // Verify session belongs to this candidate
+    const sessionCheck = await query(
+      'SELECT id FROM interview_sessions WHERE id = $1 AND candidate_id = $2',
+      [sessionId, candidateId]
+    );
+    if (sessionCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Session not found or access denied' });
+    }
 
     await transaction(async (client) => {
       // Update session status
@@ -314,6 +324,16 @@ export const endInterview = async (req, res) => {
 export const terminateInterview = async (req, res) => {
   try {
     const { sessionId, reason, integrityScore, violations } = req.body;
+    const candidateId = req.user.id;
+
+    // Verify session belongs to this candidate
+    const sessionCheck = await query(
+      'SELECT id FROM interview_sessions WHERE id = $1 AND candidate_id = $2',
+      [sessionId, candidateId]
+    );
+    if (sessionCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'Session not found or access denied' });
+    }
 
     await query(
       `UPDATE interview_sessions 

@@ -5,15 +5,20 @@
 
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
+// Only initialize if API key is set
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-});
+}) : null;
 
 /**
  * Evaluate answer using AI
  */
 export const evaluateWithAI = async (question, answer, expectedAnswer, options = {}) => {
   try {
+    if (!openai) {
+      return { score: 50, feedback: 'AI evaluation not configured' };
+    }
+
     let prompt = '';
 
     if (options.evaluateApproach) {
@@ -61,7 +66,7 @@ Respond in JSON format: { "score": number, "feedback": "string" }`;
     }
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',
@@ -90,6 +95,10 @@ Respond in JSON format: { "score": number, "feedback": "string" }`;
  */
 export const generateInterviewSummary = async (sessionId, scores, answers) => {
   try {
+    if (!openai) {
+      return 'Interview completed. AI summary not available — configure OpenAI API key to enable this feature.';
+    }
+
     const prompt = `Generate a concise interview summary for a candidate.
     
 Scores:
@@ -112,7 +121,7 @@ Provide a 3-4 sentence summary highlighting:
 Keep it professional and objective.`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o-mini',
       messages: [
         {
           role: 'system',

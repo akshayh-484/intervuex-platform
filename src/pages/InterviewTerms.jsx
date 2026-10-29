@@ -92,8 +92,8 @@ const InterviewTerms = () => {
                       <p>• <strong>Face Detection:</strong> AI will detect your face every 500ms. Only ONE face must be visible at all times.</p>
                       <p>• <strong>Multiple Face Detection:</strong> If multiple faces are detected, you will receive a -15 point penalty per occurrence.</p>
                       <p>• <strong>No Face Detection:</strong> If no face is detected, you will receive a -10 point penalty per occurrence.</p>
-                      <p>• <strong>Audio Monitoring:</strong> Your microphone will be monitored for background voices and noise.</p>
-                      <p>• <strong>Second Voice Detection:</strong> Detection of another person's voice results in a -10 point penalty.</p>
+                      <p>• <strong>Audio Monitoring:</strong> Your microphone activity will be tracked for monitoring purposes.</p>
+                      <p>• <strong>Second Voice Detection:</strong> Audio monitoring is currently inactive; integrity is monitored through visual proctoring.</p>
                     </div>
                   </div>
                 </div>

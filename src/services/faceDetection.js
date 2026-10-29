@@ -365,81 +365,17 @@ class FaceDetectionService {
 
   /**
    * Analyze face count and generate violations
+   * NOTE: Cooldown-based violation logic is handled in ProctoringEngine.jsx (startMonitoring).
+   * This method tracks state only and does not emit duplicate violations.
    */
   async analyzeFaceCount() {
-    const timestamp = new Date().toISOString();
-
-    // VIOLATION: Multiple faces detected
-    if (this.faceCount > 1) {
-      const violation = {
-        type: 'MULTIPLE_FACES',
-        severity: 'HIGH',
-        faceCount: this.faceCount,
-        timestamp,
-        message: `${this.faceCount} faces detected in frame`,
-        screenshot: await this.captureScreenshot(),
-        impactScore: 15 // High impact on integrity score
-      };
-
-      this.violations.push(violation);
-      
-      if (this.onViolation) {
-        this.onViolation(violation);
-      }
-
-      console.warn('⚠️ VIOLATION: Multiple faces detected:', this.faceCount);
-    }
-
-    // VIOLATION: No face detected
-    if (this.faceCount === 0) {
-      if (this.noFaceStartTime === null) {
-        this.noFaceStartTime = Date.now();
-      } else {
-        const noFaceDuration = (Date.now() - this.noFaceStartTime) / 1000;
-
-        // If face missing for more than 5 seconds
-        if (noFaceDuration > 5) {
-          const violation = {
-            type: 'FACE_DISAPPEARED',
-            severity: 'MEDIUM',
-            duration: noFaceDuration,
-            timestamp,
-            message: `Face not detected for ${noFaceDuration.toFixed(1)} seconds`,
-            screenshot: await this.captureScreenshot(),
-            impactScore: 5
-          };
-
-          this.violations.push(violation);
-          
-          if (this.onViolation) {
-            this.onViolation(violation);
-          }
-
-          console.warn('⚠️ VIOLATION: Face disappeared for', noFaceDuration, 'seconds');
-          this.noFaceStartTime = Date.now(); // Reset timer
-        }
-      }
-    } else {
-      // Face detected again after disappearance
-      if (this.noFaceStartTime !== null && this.previousFaceCount === 0) {
-        const violation = {
-          type: 'FACE_REENTRY',
-          severity: 'LOW',
-          timestamp,
-          message: 'Face re-entered frame after disappearance',
-          screenshot: await this.captureScreenshot(),
-          impactScore: 2
-        };
-
-        this.violations.push(violation);
-        
-        if (this.onViolation) {
-          this.onViolation(violation);
-        }
-      }
-      
+    // State tracking only — ProctoringEngine handles violation emission with cooldowns
+    if (this.faceCount !== 0) {
       this.noFaceStartTime = null;
+    } else if (this.noFaceStartTime === null) {
+      this.noFaceStartTime = Date.now();
     }
+    this.previousFaceCount = this.faceCount;
   }
 
   /**

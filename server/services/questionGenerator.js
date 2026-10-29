@@ -5,21 +5,30 @@
 
 import OpenAI from 'openai';
 
-const openai = new OpenAI({
+// Only initialize if API key is set
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
-});
+}) : null;
 
 /**
  * Generate interview questions based on resume data
  */
 export const generateQuestions = async (resumeData, skills) => {
   try {
+    if (!openai) {
+      console.warn('OpenAI not configured, using fallback questions');
+      return getDefaultQuestions();
+    }
+
+    const skillsList = Array.isArray(skills) ? skills : 
+                       (typeof skills === 'string' ? JSON.parse(skills) : []);
+
     const prompt = `You are an expert technical interviewer. Generate 10 interview questions based on the following candidate profile:
 
-Skills: ${skills.join(', ')}
-Experience: ${resumeData.experience || 'Not specified'}
-Education: ${resumeData.education || 'Not specified'}
-Projects: ${resumeData.projects || 'Not specified'}
+Skills: ${skillsList.join(', ') || 'General programming'}
+Experience: ${resumeData?.experience || 'Not specified'}
+Education: ${resumeData?.education || 'Not specified'}
+Projects: ${resumeData?.projects || 'Not specified'}
 
 Generate questions in the following categories:
 - 3 Technical questions (specific to their skills)
@@ -39,7 +48,7 @@ Return ONLY a JSON array with this exact structure:
 ]`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert technical interviewer.' },
         { role: 'user', content: prompt }
@@ -150,7 +159,7 @@ Answer: ${answer}
 Generate a follow-up that probes deeper into their understanding. Return ONLY the follow-up question text.`;
 
     const response = await openai.chat.completions.create({
-      model: 'gpt-4',
+      model: 'gpt-4o-mini',
       messages: [
         { role: 'system', content: 'You are an expert technical interviewer.' },
         { role: 'user', content: prompt }

@@ -1,42 +1,90 @@
 /**
  * Email Service
  * Handles sending emails to candidates and recruiters
+ * Supports: Gmail, SendGrid, SMTP, and Test Mode
  */
 
 import nodemailer from 'nodemailer';
 
-// Create transporter based on environment
+// nodemailer uses createTransport (not createTransporter)
 const createTransporter = () => {
-  // For development, use Gmail or a test account
-  // For production, use a proper email service (SendGrid, AWS SES, etc.)
+  console.log('🔍 Email Configuration Check:');
+  console.log('  EMAIL_SERVICE:', process.env.EMAIL_SERVICE);
   
+  // SendGrid (Recommended for production)
+  if (process.env.EMAIL_SERVICE === 'sendgrid') {
+    console.log('✅ Email service configured: SendGrid');
+    if (!process.env.SENDGRID_API_KEY) {
+      console.error('❌ SENDGRID_API_KEY not set!');
+      return null;
+    }
+    
+    try {
+      const transporter = nodemailer.createTransport({
+        host: 'smtp.sendgrid.net',
+        port: 587,
+        secure: false,
+        auth: {
+          user: 'apikey',
+          pass: process.env.SENDGRID_API_KEY
+        }
+      });
+      console.log('✅ SendGrid transporter created successfully');
+      return transporter;
+    } catch (error) {
+      console.error('❌ Failed to create SendGrid transporter:', error.message);
+      return null;
+    }
+  }
+  
+  // Gmail (Works locally, often blocked on cloud servers)
   if (process.env.EMAIL_SERVICE === 'gmail') {
     console.log('✅ Email service configured: Gmail');
     console.log('📧 Using email:', process.env.EMAIL_USER);
-    return nodemailer.createTransport({
-      service: 'gmail',
-      auth: {
-        user: process.env.EMAIL_USER,
-        pass: process.env.EMAIL_PASSWORD // Use App Password, not regular password
-      }
-    });
-  } else if (process.env.EMAIL_SERVICE === 'smtp') {
+    console.log('⚠️  Note: Gmail may be blocked on cloud hosting. Use SendGrid for production.');
+
+    if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
+      console.error('❌ Gmail credentials missing!');
+      return null;
+    }
+
+    try {
+      const transporter = nodemailer.createTransport({
+        service: 'gmail',
+        auth: {
+          user: process.env.EMAIL_USER,
+          pass: process.env.EMAIL_PASSWORD
+        }
+      });
+      console.log('✅ Gmail transporter created successfully');
+      return transporter;
+    } catch (error) {
+      console.error('❌ Failed to create Gmail transporter:', error.message);
+      return null;
+    }
+  }
+  
+  // Custom SMTP
+  if (process.env.EMAIL_SERVICE === 'smtp') {
     console.log('✅ Email service configured: SMTP');
-    return nodemailer.createTransporter({
+    return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port: process.env.SMTP_PORT || 587,
-      secure: process.env.SMTP_SECURE === 'true', // true for 465, false for other ports
+      secure: process.env.SMTP_SECURE === 'true',
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASSWORD
       }
     });
-  } else {
-    // Development mode - use Ethereal (fake SMTP for testing)
-    console.log('⚠️  Email service not configured. Using test mode.');
-    console.log('📧 Emails will be logged to console instead of being sent.');
-    return null;
   }
+  
+  // Test mode (no emails sent)
+  console.log('⚠️  Email service not configured. Using test mode.');
+  console.log('📧 Emails will be logged to console instead of being sent.');
+  console.log('💡 To enable emails:');
+  console.log('   - For production: Set EMAIL_SERVICE=sendgrid and SENDGRID_API_KEY');
+  console.log('   - For local dev: Set EMAIL_SERVICE=gmail with EMAIL_USER and EMAIL_PASSWORD');
+  return null;
 };
 
 const transporter = createTransporter();

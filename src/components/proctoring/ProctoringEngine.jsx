@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import Webcam from 'react-webcam';
 import faceDetectionService from '../../services/faceDetection.js';
 import noiseDetectionService from '../../services/noiseDetection.js';
+import { proctoringAPI } from '../../services/api.js';
 import { AlertTriangle, Camera, Mic, Eye, Monitor, Move, Maximize2, Minimize2, Shield } from 'lucide-react';
 
 /**
@@ -355,41 +356,41 @@ const ProctoringEngine = ({ sessionId, onViolation, onIntegrityUpdate }) => {
   }
 
   /**
-   * Detect developer tools
+   * Detect developer tools — with cooldown to avoid spamming violations
    */
   const detectDevTools = () => {
     const threshold = 160;
+    let devToolsLastReported = 0;
+    const DEVTOOLS_COOLDOWN_MS = 30000; // Only report once per 30 seconds
+
     setInterval(() => {
       if (
         window.outerWidth - window.innerWidth > threshold ||
         window.outerHeight - window.innerHeight > threshold
       ) {
-        const violation = {
-          type: 'DEV_TOOLS',
-          severity: 'HIGH',
-          timestamp: new Date().toISOString(),
-          message: 'Developer tools detected',
-          impactScore: 10
-        };
-
-        handleViolation(violation);
+        const now = Date.now();
+        if (now - devToolsLastReported > DEVTOOLS_COOLDOWN_MS) {
+          devToolsLastReported = now;
+          const violation = {
+            type: 'DEV_TOOLS',
+            severity: 'HIGH',
+            timestamp: new Date().toISOString(),
+            message: 'Developer tools detected',
+            impactScore: 10
+          };
+          handleViolation(violation);
+        }
       }
     }, 1000);
   }
 
   /**
-   * Send violation to backend
+   * Send violation to backend using the API service (with auth header)
    */
   const sendViolationToBackend = async (violation) => {
+    if (!sessionId) return;
     try {
-      await fetch('/api/proctoring/violation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          violation
-        })
-      });
+      await proctoringAPI.logViolation(sessionId, violation);
     } catch (error) {
       console.error('Failed to send violation:', error);
     }
@@ -612,7 +613,7 @@ const ProctoringEngine = ({ sessionId, onViolation, onIntegrityUpdate }) => {
       </div>
       
       {/* Custom Scrollbar Styles */}
-      <style jsx>{`
+      <style>{`
         .custom-scrollbar::-webkit-scrollbar {
           width: 4px;
         }

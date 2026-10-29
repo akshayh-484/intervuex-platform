@@ -134,7 +134,11 @@ const InterviewReport = () => {
                   <div className="flex justify-between items-start">
                     <div>
                       <p className="font-semibold text-red-800">{violation.type}</p>
-                      <p className="text-sm text-red-600">{violation.details}</p>
+                      <p className="text-sm text-red-600">
+                        {typeof violation.details === 'object'
+                          ? violation.details?.message || JSON.stringify(violation.details)
+                          : violation.details}
+                      </p>
                     </div>
                     <span className={`px-3 py-1 rounded-full text-sm font-semibold ${
                       violation.severity === 'HIGH' ? 'bg-red-200 text-red-800' :
@@ -174,7 +178,10 @@ const InterviewReport = () => {
                 <div className="ml-12 p-4 bg-gray-50 rounded-lg">
                   <p className="text-sm font-semibold text-gray-700 mb-2">Answer:</p>
                   <p className="text-gray-800">
-                    {answers && answers[index] ? answers[index].answer : 'No answer provided'}
+                    {answers && (
+                      answers.find(a => a.questionId === question.id)?.answer ||
+                      (answers[index] ? answers[index].answer : 'No answer provided')
+                    )}
                   </p>
                 </div>
               </div>

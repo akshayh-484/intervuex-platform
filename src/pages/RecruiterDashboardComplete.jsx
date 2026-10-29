@@ -24,6 +24,12 @@ const RecruiterDashboardComplete = () => {
   });
 
   useEffect(() => {
+    // Guard: redirect to login if no token
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/recruiter/login');
+      return;
+    }
     loadDashboard();
   }, []);
 
@@ -233,7 +239,12 @@ const RecruiterDashboardComplete = () => {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="text-gray-600 text-sm">Total Interviews</div>
-            <div className="text-3xl font-bold text-blue-600">{stats?.stats?.scheduled || 0}</div>
+            <div className="text-3xl font-bold text-blue-600">
+              {(parseInt(stats?.stats?.scheduled || 0) +
+                parseInt(stats?.stats?.active || 0) +
+                parseInt(stats?.stats?.completed || 0) +
+                parseInt(stats?.stats?.terminated || 0))}
+            </div>
           </div>
           <div className="bg-white p-6 rounded-lg shadow">
             <div className="text-gray-600 text-sm">Completed</div>

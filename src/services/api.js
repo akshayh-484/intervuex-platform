@@ -30,7 +30,11 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Redirect to recruiter login (not candidate login)
+      const currentPath = window.location.pathname;
+      if (!currentPath.startsWith('/interview')) {
+        window.location.href = '/recruiter/login';
+      }
     }
     return Promise.reject(error);
   }
@@ -63,7 +67,7 @@ export const interviewAPI = {
     api.get(`/interview/${sessionId}`),
   
   submitAnswer: (sessionId, questionId, answer) =>
-    api.post('/interview/answer', { sessionId, questionId, answer }),
+    api.post('/interview/submit-answer', { sessionId, questionId, answer }),
   
   getTimeRemaining: (sessionId) =>
     api.get(`/interview/${sessionId}/time`),
@@ -77,8 +81,9 @@ export const interviewAPI = {
 
 // Proctoring APIs
 export const proctoringAPI = {
-  logViolation: (sessionId, type, severity, details, screenshot) =>
-    api.post('/proctoring/violation', { sessionId, type, severity, details, screenshot }),
+  // Backend expects { sessionId, violation } object
+  logViolation: (sessionId, violation) =>
+    api.post('/proctoring/violation', { sessionId, violation }),
   
   getViolations: (sessionId) =>
     api.get(`/proctoring/violations/${sessionId}`)

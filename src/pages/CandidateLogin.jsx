@@ -18,25 +18,33 @@ const CandidateLogin = () => {
     setIsLoading(true);
 
     try {
+      const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
       // Verify token and get session
-      const response = await fetch('/api/auth/candidate-login', {
+      const response = await fetch(`${API_BASE}/auth/candidate/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token })
+        body: JSON.stringify({
+          token,
+          deviceFingerprint: {
+            userAgent: navigator.userAgent,
+            language: navigator.language,
+            platform: navigator.platform
+          }
+        })
       });
 
-      if (!response.ok) {
-        throw new Error('Invalid or expired interview link');
-      }
-
       const data = await response.json();
-      
-      // Store auth token
-      localStorage.setItem('token', data.authToken);
-      localStorage.setItem('sessionId', data.sessionId);
 
-      // Navigate to terms page first
-      navigate(`/interview-terms/${data.sessionId}`);
+      if (!response.ok) {
+        throw new Error(data.error || 'Invalid or expired interview link');
+      }
+      
+      // Store auth token — controller returns { token, session: { id, ... } }
+      localStorage.setItem('token', data.token);
+      localStorage.setItem('sessionId', data.session.id);
+
+      // Navigate to terms page with the access token (not session ID)
+      navigate(`/interview-terms/${token}`);
     } catch (err) {
       setError(err.message);
     } finally {

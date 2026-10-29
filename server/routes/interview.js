@@ -25,8 +25,9 @@ router.post('/start', authenticate, interviewController.startInterview);
 // Get interview details
 router.get('/:sessionId', authenticateSession, interviewController.getInterview);
 
-// Submit answer
+// Submit answer - supports both /submit-answer and /answer for compatibility
 router.post('/submit-answer', authenticate, interviewController.submitAnswer);
+router.post('/answer', authenticate, interviewController.submitAnswer);
 
 // Get time remaining
 router.get('/time-remaining/:sessionId', authenticateSession, interviewController.getTimeRemaining);
@@ -35,7 +36,7 @@ router.get('/time-remaining/:sessionId', authenticateSession, interviewControlle
 router.post('/end', authenticate, interviewController.endInterview);
 
 // Terminate interview (violations)
-router.post('/terminate', authenticateSession, interviewController.terminateInterview);
+router.post('/terminate', authenticate, interviewController.terminateInterview);
 
 // Speech-to-text conversion
 router.post('/speech-to-text', authenticate, audioUpload.single('audio'), interviewController.convertSpeechToText);

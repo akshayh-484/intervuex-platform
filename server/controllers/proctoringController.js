@@ -13,23 +13,31 @@ export const logViolation = async (req, res) => {
   try {
     const { sessionId, violation } = req.body;
 
-    // Insert violation into database
+    if (!sessionId || !violation) {
+      return res.status(400).json({ error: 'sessionId and violation are required' });
+    }
+
+    // Map violation object to schema columns: type, severity, details (JSONB), timestamp, screenshot (TEXT)
+    const details = {
+      message: violation.message,
+      impactScore: violation.impactScore || 0,
+      metadata: violation.metadata || null,
+      audioData: violation.audioData || null
+    };
+
+    // Insert violation into database using actual schema columns
     const result = await query(
       `INSERT INTO violations (
-        session_id, type, severity, timestamp, message,
-        screenshot_url, audio_data, metadata, impact_score
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        session_id, type, severity, details, timestamp, screenshot
+      ) VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING id`,
       [
         sessionId,
         violation.type,
         violation.severity,
-        violation.timestamp,
-        violation.message,
-        violation.screenshot || null,
-        violation.audioData ? JSON.stringify(violation.audioData) : null,
-        violation.metadata ? JSON.stringify(violation.metadata) : null,
-        violation.impactScore || 0
+        JSON.stringify(details),
+        violation.timestamp ? new Date(violation.timestamp) : new Date(),
+        violation.screenshot || null
       ]
     );
 

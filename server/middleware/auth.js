@@ -81,11 +81,18 @@ export const authenticateSession = async (req, res, next) => {
 
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
+    // Support both session-param routes and body-based sessionId
+    const resolvedSessionId = sessionId || req.body?.sessionId;
+
+    if (!resolvedSessionId) {
+      return res.status(400).json({ error: 'Session ID required' });
+    }
+
     // Verify session belongs to user and is active
     const result = await query(
       `SELECT * FROM interview_sessions 
        WHERE id = $1 AND candidate_id = $2 AND status IN ('scheduled', 'active')`,
-      [sessionId, decoded.candidateId]
+      [resolvedSessionId, decoded.id]
     );
 
     if (result.rows.length === 0) {
@@ -93,7 +100,7 @@ export const authenticateSession = async (req, res, next) => {
     }
 
     req.session = result.rows[0];
-    req.user = { id: decoded.candidateId };
+    req.user = { id: decoded.id, type: decoded.type, sessionId: decoded.sessionId };
     next();
   } catch (error) {
     return res.status(403).json({ error: 'Session authentication failed' });

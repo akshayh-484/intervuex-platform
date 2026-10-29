@@ -3,19 +3,21 @@ node_modules/
 package-lock.json
 yarn.lock
 
-# Environment
+# Environment — NEVER commit real secrets
 .env
 .env.local
 .env.production
+.env.development
 server/.env
+server/.env.local
 server/.env.production
 
-# Build
+# Build output
 dist/
 build/
 *.log
 
-# IDE
+# IDE / Editor
 .vscode/
 .idea/
 *.swp
@@ -27,7 +29,7 @@ build/
 .DS_Store
 Thumbs.db
 
-# Uploads
+# Uploaded files
 uploads/
 server/uploads/
 temp/
@@ -37,21 +39,18 @@ logs/
 *.log
 npm-debug.log*
 
-# Testing
+# Test coverage
 coverage/
 .nyc_output/
 
-# Models (download separately)
+# Face-API / ML models (large, download separately)
 public/models/
 
-# Database
+# Database files
 *.db
 *.sqlite
 
-# Misc
+# Cache / temp
 .cache/
 .temp/
 .vite/
-
-# Documentation (keep only essential)
-CLEANUP_SUMMARY.md

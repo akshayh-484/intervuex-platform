@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import ProctoringEngine from '../components/proctoring/ProctoringEngine.jsx';
 import QuestionPanel from '../components/interview/QuestionPanel.jsx';
 import AnswerRecorder from '../components/interview/AnswerRecorder.jsx';
 import Timer from '../components/interview/Timer.jsx';
 import { Clock, AlertCircle } from 'lucide-react';
+
+const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 /**
  * INTERVIEW SESSION PAGE
@@ -24,6 +26,10 @@ const InterviewSession = () => {
   const [timeRemaining, setTimeRemaining] = useState(1800); // 30 minutes
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [sessionId, setSessionId] = useState(null);
+  // Refs to avoid stale closures in callbacks
+  const violationsRef = useRef([]);
+  const sessionIdRef = useRef(null);
+  const integrityScoreRef = useRef(100);
 
   useEffect(() => {
     initializeSession();
@@ -71,7 +77,7 @@ const InterviewSession = () => {
   const initializeSession = async () => {
     try {
       // First, authenticate with the token
-      const authResponse = await fetch('http://localhost:5000/api/auth/candidate/login', {
+      const authResponse = await fetch(`${API_BASE}/auth/candidate/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -96,10 +102,11 @@ const InterviewSession = () => {
       // Store auth token and session info
       localStorage.setItem('token', authData.token);
       setSessionId(authData.session.id);
+      sessionIdRef.current = authData.session.id;
       setTimeRemaining(authData.session.duration);
 
       // Start the interview session
-      const startResponse = await fetch('http://localhost:5000/api/interview/start', {
+      const startResponse = await fetch(`${API_BASE}/interview/start`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -157,16 +164,19 @@ const InterviewSession = () => {
    * Handle violation from proctoring engine
    */
   const handleViolation = (violation) => {
-    setViolations(prev => [...prev, violation]);
+    setViolations(prev => {
+      const updated = [...prev, violation];
+      violationsRef.current = updated;
+      // Auto-terminate if too many violations (use ref length to avoid stale state)
+      if (updated.length >= 10) {
+        terminateInterview('Too many integrity violations');
+      }
+      return updated;
+    });
     
     // Show warning to candidate
     if (violation.severity === 'HIGH') {
       showViolationWarning(violation);
-    }
-
-    // Auto-terminate if too many violations
-    if (violations.length >= 10) {
-      terminateInterview('Too many integrity violations');
     }
   }
 
@@ -183,9 +193,7 @@ const InterviewSession = () => {
    */
   const handleIntegrityUpdate = (score) => {
     setIntegrityScore(score);
-    
-    // NO POPUP WARNINGS - only show in proctoring panel
-    // Candidate can see score in real-time without interruption
+    integrityScoreRef.current = score;
   }
 
   /**
@@ -196,7 +204,7 @@ const InterviewSession = () => {
 
     try {
       // Submit answer to backend
-      const response = await fetch('http://localhost:5000/api/interview/submit-answer', {
+      const response = await fetch(`${API_BASE}/interview/submit-answer`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -254,16 +262,17 @@ const InterviewSession = () => {
    */
   const completeInterview = async () => {
     try {
-      await fetch('http://localhost:5000/api/interview/end', {
+      const sid = sessionIdRef.current || sessionId;
+      await fetch(`${API_BASE}/interview/end`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          sessionId,
-          integrityScore,
-          violations,
+          sessionId: sid,
+          integrityScore: integrityScoreRef.current,
+          violations: violationsRef.current,
           completedAt: new Date().toISOString()
         })
       });
@@ -282,17 +291,18 @@ const InterviewSession = () => {
    */
   const terminateInterview = async (reason) => {
     try {
-      await fetch('/api/interview/terminate', {
+      const sid = sessionIdRef.current || sessionId;
+      await fetch(`${API_BASE}/interview/terminate`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         },
         body: JSON.stringify({
-          sessionId,
+          sessionId: sid,
           reason,
-          integrityScore,
-          violations
+          integrityScore: integrityScoreRef.current,
+          violations: violationsRef.current
         })
       });
 
@@ -371,6 +381,19 @@ const InterviewSession = () => {
                   </div>
                 </div>
               </div>
+
+              {/* End Interview Button */}
+              <button
+                onClick={() => {
+                  if (confirm('Are you sure you want to end the interview? This action cannot be undone.')) {
+                    completeInterview();
+                  }
+                }}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium flex items-center gap-2"
+              >
+                <AlertCircle className="w-4 h-4" />
+                End Interview
+              </button>
             </div>
           </div>
         </div>
