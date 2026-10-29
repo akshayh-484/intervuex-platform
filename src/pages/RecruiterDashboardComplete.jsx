@@ -106,6 +106,12 @@ const RecruiterDashboardComplete = () => {
 
   const user = JSON.parse(localStorage.getItem('user') || '{}');
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    navigate('/recruiter/login');
+  };
+
   useEffect(() => {
     const token = localStorage.getItem('token');
     if (!token) { navigate('/recruiter/login'); return; }
@@ -122,17 +128,22 @@ const RecruiterDashboardComplete = () => {
       setStats(d.data);
       setCandidates(c.data.candidates || []);
     } catch (err) {
-      if (err.response?.status === 401) { handleLogout(); }
+      console.error('Dashboard load error:', err.response?.data || err.message);
+      if (err.response?.status === 401) {
+        handleLogout();
+      }
+      // Don't crash — show empty state instead
+      setStats({ stats: { scheduled:0, active:0, completed:0, terminated:0 }, shortlistStats: { shortlisted:0 }, recentSessions: [] });
+      setCandidates([]);
     } finally {
       setLoading(false);
     }
   };
 
-  /* ── computed totals ── */
-  const total = stats ? (
-    +stats.stats.scheduled + +stats.stats.active +
-    +stats.stats.completed + +stats.stats.terminated
-  ) : 0;
+  const total = stats
+    ? (+stats.stats?.scheduled || 0) + (+stats.stats?.active || 0) +
+      (+stats.stats?.completed || 0) + (+stats.stats?.terminated || 0)
+    : 0;
 
   /* ── add candidate ── */
   const handleAddCandidate = async (e) => {
@@ -207,12 +218,6 @@ const RecruiterDashboardComplete = () => {
     catch { alert('Failed to delete interview'); }
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    navigate('/recruiter/login');
-  };
-
   /* ── filtered candidates ── */
   const filtered = candidates.filter(c =>
     c.full_name.toLowerCase().includes(search.toLowerCase()) ||
@@ -259,7 +264,7 @@ const RecruiterDashboardComplete = () => {
         {/* ── Greeting ── */}
         <div className="mb-8 animate-fade-up">
           <h1 className="text-2xl font-bold text-gray-900">
-            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 17 ? 'afternoon' : 'evening'},{' '}
+            Good {new Date().getHours() < 12 ? 'morning' : (new Date().getHours() < 17 ? 'afternoon' : 'evening')},{' '}
             {user.name?.split(' ')[0]} 👋
           </h1>
           <p className="text-gray-500 mt-1">Here's your hiring overview for today.</p>
@@ -267,10 +272,10 @@ const RecruiterDashboardComplete = () => {
 
         {/* ── Stats ── */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-          <StatCard icon={Users}      label="Total Interviews"  value={total}                          color="bg-brand-500"    delay={0} />
-          <StatCard icon={CheckCircle} label="Completed"        value={stats?.stats?.completed  || 0}  color="bg-emerald-500"  delay={0.05} />
-          <StatCard icon={Star}        label="Shortlisted"      value={stats?.shortlistStats?.shortlisted || 0} color="bg-amber-500" delay={0.1} />
-          <StatCard icon={Activity}    label="Active Now"       value={stats?.stats?.active     || 0}  color="bg-red-500"     delay={0.15} />
+          <StatCard icon={Users}       label="Total Interviews"  value={total}                                       color="bg-brand-500"   delay={0} />
+          <StatCard icon={CheckCircle} label="Completed"         value={+stats?.stats?.completed   || 0}             color="bg-emerald-500" delay={0.05} />
+          <StatCard icon={Star}        label="Shortlisted"       value={+stats?.shortlistStats?.shortlisted || 0}    color="bg-amber-500"   delay={0.1} />
+          <StatCard icon={Activity}    label="Active Now"        value={+stats?.stats?.active      || 0}             color="bg-red-500"     delay={0.15} />
         </div>
 
         {/* ── Tabs ── */}

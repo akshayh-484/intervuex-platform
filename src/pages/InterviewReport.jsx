@@ -11,27 +11,27 @@ import {
 const ScoreRing = ({ score = 0, size = 88, stroke = 8, color = '#6366f1' }) => {
   const r = (size - stroke) / 2;
   const circ = 2 * Math.PI * r;
-  const offset = circ - (score / 100) * circ;
+  const offset = circ - (Math.min(100, Math.max(0, score)) / 100) * circ;
   return (
-    <svg width={size} height={size} className="-rotate-90">
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="#f1f5f9" strokeWidth={stroke} />
       <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth={stroke}
-        strokeLinecap="round" strokeDasharray={circ}
-        strokeDashoffset={offset} className="score-ring" />
+        strokeLinecap="round" strokeDasharray={circ} strokeDashoffset={offset}
+        style={{ transition: 'stroke-dashoffset 1.2s cubic-bezier(0.4,0,0.2,1)' }} />
     </svg>
   );
 };
 
 /* ── score card ── */
-const ScoreCard = ({ label, value = 0, color, ringColor }) => (
+const ScoreCard = ({ label, value = 0, ringColor }) => (
   <div className="card p-4 flex flex-col items-center gap-2 animate-fade-up">
-    <div className="relative">
+    <div className="relative w-[88px] h-[88px]">
       <ScoreRing score={value} color={ringColor} />
-      <span className="absolute inset-0 flex items-center justify-center text-xl font-bold text-gray-900 rotate-90" style={{transform:'rotate(90deg)'}}>
+      <span className="absolute inset-0 flex items-center justify-center text-xl font-bold text-gray-900">
         {value}
       </span>
     </div>
-    <p className="text-xs font-semibold text-gray-500 text-center">{label}</p>
+    <p className="text-xs font-semibold text-gray-500 text-center leading-tight">{label}</p>
   </div>
 );
 
@@ -173,11 +173,11 @@ const InterviewReport = () => {
             </div>
           </div>
           {scores && (
-            <div className="text-center">
-              <div className="relative inline-flex">
+            <div className="text-center flex-shrink-0">
+              <div className="relative w-24 h-24">
                 <ScoreRing score={scores.final_score || 0} size={96} stroke={8}
                   color={scores.final_score >= 70 ? '#22c55e' : scores.final_score >= 50 ? '#f59e0b' : '#ef4444'} />
-                <span className="absolute inset-0 flex items-center justify-center text-2xl font-black text-gray-900" style={{transform:'rotate(90deg)'}}>
+                <span className="absolute inset-0 flex items-center justify-center text-2xl font-black text-gray-900">
                   {scores.final_score || 0}
                 </span>
               </div>
